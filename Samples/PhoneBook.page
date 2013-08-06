@@ -1,0 +1,275 @@
+<apex:page docType="html-5.0"
+           showHeader="false" sidebar="false"
+           standardController="Contact">          
+    <apex:stylesheet value="{!URLFOR($Resource.force_templates,'css/app.css')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.MobileSample_Resources_jQueryMobile, 'jquery-1.9.1.min.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.force_templates,'js/main.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.force_external, 'cordova-2.3.0.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.force_libs, 'cordova.force.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.force_external, 'backbone/underscore-1.4.4.min.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.force_libs, 'force.entity.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.SObjectData)}"/>
+    <head>
+        <title>Address Book</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <c:RemoteTK />
+        <style>
+            #detailview {display: none;}
+            .list-view li { padding-left: 0px; margin-left: 0px; }
+        </style>
+        <script type="text/javascript">
+        //    var $j = jQuery.noConflict(); 
+            
+            var client = new remotetk.Client();
+            Force.init(null,null,client,null);
+            
+            var Contacts = new SObjectData();
+            Contacts.errorHandler = displayError;
+            
+            var addressBook = new Array();
+            
+            var logToConsole = cordova.require("salesforce/util/logger").logToConsole;
+            var contactsObj = cordova.require("cordova/plugin/contacts");
+            
+            $(document).ready(function() {
+                    //Add event listeners and so forth here
+                    logToConsole("onLoad: jquery ready");
+                    $('#back-button').hide();
+                    $('#back-button').click(function(e){
+                        changePage();
+                    });
+                    $('#search-text').focus(function(e){
+                        $('#search-text').val('');
+                    });
+                    $('#search-text').blur(function(e){
+                        searchContacts($('#search-text').val());
+                    });
+                    $('#save-salesforce').click(function(e){
+                        syncToSalesforce();
+                    });
+                    $('#save-addressbook').click(function(e){
+                        syncToAddressBook();
+                    });
+                    getAllContacts();
+            });
+            
+            function getAllContacts() {
+                logToConsole('fetching data');
+                Contacts.fetch('soql',"SELECT id, firstName, lastName, phone from Contact WHERE phone != '' LIMIT 100",function() {
+                    showContacts(Contacts.data());
+                }); 
+                if(cordova) {
+                    logToConsole('fetching address book');
+                    var contactOptionsType = cordova.require("cordova/plugin/ContactFindOptions");
+                    var options = new contactOptionsType();
+                    options.filter = ""; // empty search string returns all contacts
+                    options.multiple = true;
+                    var fields = ["name","phoneNumbers"];
+                    contactsObj.find(fields, showAddressBook, displayError, options);
+                    }; 
+            }
+            
+            function checkContacts(search_text) {
+                $('#save-salesforce').hide();
+                $('#save-addressbook').hide();
+                var ContactCheck = new SObjectData();
+                ContactCheck.fetch("soql","SELECT id, firstName, lastName, phone from Contact WHERE Name LIKE '%"+search_text+"%'",function() {
+                    if(!ContactCheck.dataObject) {
+                        $('#save-salesforce').show();
+                    }
+                }); 
+                if(cordova) {
+                    logToConsole('fetching address book');
+                    var contactOptionsType = cordova.require("cordova/plugin/ContactFindOptions");
+                    var options = new contactOptionsType();
+                    options.filter = search_text; // empty search string returns all contacts
+                //    options.multiple = true;
+                    var fields = ["name","phoneNumbers"];
+                    contactsObj.find(fields, function(records){if(records.length == 0){$('#save-addressbook').show();}}, displayError, options);
+                    };
+                
+            }
+            
+            
+            function searchContacts(search_text) {
+                Contacts.fetch("soql","SELECT id, firstName, lastName, phone from Contact WHERE Name LIKE '%"+search_text+"%'",function() {
+                    showContacts(Contacts.data());
+                }); 
+                
+                if(cordova) {
+                    logToConsole('fetching address book');
+                    var contactOptionsType = cordova.require("cordova/plugin/ContactFindOptions");
+                    var options = new contactOptionsType();
+                    options.filter = search_text; // empty search string returns all contacts
+                //    options.multiple = true;
+                    var fields = ["name","phoneNumbers"];
+                    contactsObj.find(fields, showAddressBook, displayError, options);
+                    };
+            }
+            
+            function changePage() {
+                $('#listview').toggle();
+                $('#detailview').toggle();
+                $('#back-button').toggle();
+                $('#search-text').toggle();
+            }
+            
+            function showContacts(response) {    
+                logToConsole('contacts found');
+                $('#sfdc-list').empty();
+                if(Contacts.data() == null) { return; }
+                $.each(Contacts.data(),
+                    function() {
+                    var newLi = $('<li></li>');
+                                
+                   var newLink = $('<a class="content" id="' +this.Id+ '" ><h2>' +this.FirstName+ ' '+this.LastName+ '</h2></a> <div class="list-view-icons"><span class="icon-right-arrow">&nbsp;</span></div>');
+                    newLink.click(function(e) {
+                        e.preventDefault();
+                        $('#first-name').html(Contacts.findRecordById([this.id]).FirstName);
+                        $('#last-name').html(Contacts.findRecordById([this.id]).LastName);
+                        $('#phone').html(Contacts.findRecordById([this.id]).Phone);
+                        $('#phone').attr('href','tel:'+Contacts.findRecordById([this.id]).Phone);
+                        $('#contact-id').val(Contacts.findRecordById([this.id]).Id);
+                        checkContacts($('#first-name').html() + ' ' + $('#last-name').html());
+                        changePage();
+                    });
+                    newLi.append(newLink);            
+                    newLi.appendTo('#sfdc-list');
+                  });
+            }
+
+            function showAddressBook(records) {
+                logToConsole('address book found');
+                logToConsole("onSuccessDevice: received " + records.length + " contacts");
+                addressBook = records;
+                $('#book-list').empty();
+                $.each(records, function(i, contact) {
+                       var formattedName = contact.name.formatted;
+                       var phone;
+                       if(contact.phoneNumbers && contact.phoneNumbers.length >0) {
+                           phone = contact.phoneNumbers[0].value;
+                       } else {
+                           phone = '';
+                       }
+                       var newLi = $('<li></li>');
+                       var newLink = $("<a index='"+i+"' fname='"+contact.name.givenName+"' lname='"+contact.name.familyName+"' phone='"+phone+"'><h2>" + formattedName +"</h2></a> <div class='list-view-icons'><span class='icon-right-arrow'>&nbsp;</span></div>");
+                        newLink.click(function(e) {
+                            e.preventDefault();
+                            $('#first-name').html($.attr(this,'fname'));
+                            $('#last-name').html($.attr(this,'lname'));
+                            $('#phone').html($.attr(this,'phone'));
+                            $('#phone').attr('href','tel:'+$.attr(this,'phone'));
+                            $('#contact-id').val($.attr(this,'index'));
+                            checkContacts($('#first-name').html() + ' ' + $('#last-name').html());
+                            changePage();
+                        }); 
+                        newLi.append(newLink);           
+                        newLi.appendTo('#book-list'); 
+                       }); 
+            }
+            
+            function syncToSalesforce() {
+                console.log('Saving to SFDC');
+                var Contact = new SObjectData();
+                Contact.fetch('soql',
+                "SELECT ID, FirstName, LastName, Phone from Contact WHERE FirstName='"+$('#aFName').val()+"' AND LastName='"+$('#aLName').val()+"' LIMIT 1",function() {
+                    console.log('return val:');
+                    var record;
+                    if(Contact.record() == null) {
+                        console.log('creating record');
+                        record = Contact.create('Contact',{
+                            'FirstName' : $('#first-name').html(),
+                            'LastName' : $('#last-name').html(),
+                            'Phone' : $('#phone').html(),
+                        });
+                    } else {
+                        console.log('updating record');
+                        record = Contact.record();
+                    }
+                    console.log('Syncing!!');
+                    Contact.sync(function() {
+                        getAllContacts();
+                        checkContacts($('#first-name').html() + ' ' + $('#last-name').html());
+                        });
+                });
+                
+            }
+            
+            function syncToAddressBook() {
+                console.log('saving local address');
+                var contact = contactsObj.create();
+                contact.name = {
+                    'givenName' : $('#first-name').html(),
+                    'familyName' : $('#last-name').html()
+                };
+                var phoneNumbers = [];
+                phoneNumbers[0] = new ContactField('work', $('#phone').html(), true);
+                contact.phoneNumbers = phoneNumbers;
+                contact.save(function() {
+                    getAllContacts();
+                    checkContacts($('#first-name').html() + ' ' + $('#last-name').html());
+                    },displayError);
+            }
+            
+            
+            
+            //success and error callbacks
+            function displayError(e){
+                logToConsole('ERROR FOUND:');
+                logToConsole(e);
+            //    $j('#error').html(e[0].message);
+            }
+            </script>
+    </head>
+    <body>
+    <div id="app-wrapper">
+    
+    <nav id="main-menu" class="main-menu">
+    <a href="#">Something</a>
+    <a href="#">Something</a>
+    <a href="#">Something</a>
+    </nav><!--#main-menu-->
+
+    <header>
+    <div id="main-menu-button-left" class="main-menu-button main-menu-button-left"><a id="back-button" class="left-arrow">&nbsp;</a></div>
+ 
+    <h1>Phone Book</h1>
+    </header>
+    
+    <div id="app-content">
+    <input id="search-text" type="text" value="Seach Contacts" />
+    
+    <div id="listview">
+        <div class="list-view-header"><h2>Salesforce Contacts</h2></div>
+            <ul id="sfdc-list" class="list-view">
+            </ul>
+
+        <div class="list-view-header"><h2>Address Book</h2></div>
+            <ul id="book-list" class="list-view">
+            </ul>
+    </div>
+    
+    <div id="detailview">
+        <section class="border-bottom">
+            <div class="content">
+                <h2 id="first-name">Hello World</h2>
+                <h2 id="last-name"></h2><br />
+                <a id="phone" class="action-phone">&nbsp;</a>
+                <input id="contact-id" type="hidden" />
+            </div><!--.content-->
+        </section>
+        <div class="form-navigation-buttons form-navigation-buttons-relative">
+          <div class="form-navigation-buttons-padding">
+            <a href="#" id="save-salesforce" class="span-100 next">Save To Salesforce</a>
+          </div>
+          <div class="form-navigation-buttons-padding">
+            <a href="#" id="save-addressbook" class="span-100 next">Save To Address Book</a>
+          </div>
+        </div>
+    </div><!--.detail-view-header-->
+
+
+    </div><!--#app-content-->
+    </div><!--#app-wrapper-->
+    </body>    
+</apex:page>
