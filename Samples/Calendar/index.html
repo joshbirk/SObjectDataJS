@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8">
+<title>Day Calendar Template</title>
+<meta name="description" content="">
+<meta name="viewport" content="width=device-width, initial-scale=1,  minimum-scale=1, maximum-scale=1">
+
+<!-- Template CSS -->
+<link rel="stylesheet" href="common/css/app.min.css">
+<!-- slight tweak to allow day o week -->
+<style>
+    .week-planner li .date { top: 5px; }
+</style>
+    
+    
+<!-- jQuery and Underscore -->
+<script src="common/js/jQuery2.0.2.min.js"></script>
+<script src="common/js/underscore-1.4.4.min.js"></script>
+
+<!-- Template JS -->
+<script src="common/js/main.min.js"></script>
+<script src="common/js/app.min.js"></script>
+
+<!-- Mobile SDK + SObjectData -->
+<script src="common/js/cordova-2.3.0.js"></script>
+<script src="common/js/cordova.force.js"></script>
+<script src="common/js/forcetk.mobilesdk.js"></script>
+<script src="common/js/smartsync.js"></script>
+<script src="common/js/SObjectData.js"></script>
+<script src="common/js/auth.js"></script>
+
+<!-- Debug -->
+
+    
+<script>
+    var Sun_Events = new Array();
+    var Mon_Events = new Array();
+    var Tue_Events = new Array();
+    var Wed_Events = new Array();
+    var Thu_Events = new Array();
+    var Fri_Events = new Array();
+    var Sat_Events = new Array();
+    
+    var Week_Events = [Sun_Events,Mon_Events,Tue_Events,Wed_Events,Thu_Events,Fri_Events,Sat_Events];
+    var Today_Events = new Array();
+    var Week_Dates = new Array();
+    var Events = new SObjectData();
+    
+    var Days_of_Week = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    
+    var eventsTmpl;
+    
+    //called after OAuth
+    function onApplicationReady() {
+        console.log('Application Ready');
+        eventsTmpl = _.template($("#events-template").html());
+        daysTmpl = _.template($("#days-template").html());
+
+        $('#today-tab').click(function() {
+                              refreshData('TODAY');
+                              });
+        
+        $('#week-tab').click(function() {
+                              refreshData('THIS_WEEK');
+                              });
+        
+        refreshData('TODAY');
+    }
+    
+    function activityToDate(record) {
+        activity_string = record.ActivityDate;
+        activity_array = activity_string.split("-");
+        activity_month = parseInt(activity_array[1])-1;
+        return new Date(activity_array[0],activity_month,activity_array[2]);
+    }
+    
+    function activityToDateTime(record){
+        activity_string = record.ActivityDateTime;
+        activity_array = activity_string.split("T");
+        date_array = activity_array[0].split("-");
+        time_array = activity_array[1].split(".")[0].split(":");
+        activity_month = parseInt(date_array[1])-1;
+        return new Date(Date.UTC(date_array[0],activity_month,date_array[2],time_array[0],time_array[1]));
+    }
+    
+    function activityTimeSpan(activity) {
+        real_datetime = activityToDateTime(activity);
+        next_datetime = activityToDateTime(activity);
+        next_datetime.setMinutes(next_datetime.getMinutes() + activity.DurationInMinutes);
+        return formatAMPM(real_datetime) + " - " + formatAMPM(next_datetime);
+    }
+    
+    function formatAMPM(date) {
+        var hours = date.getHours();
+        var minutes = date.getMinutes();
+        var ampm = hours >= 12 ? 'pm' : 'am';
+        hours = hours % 12;
+        hours = hours ? hours : 12; // the hour '0' should be '12'
+        minutes = minutes < 10 ? '0'+minutes : minutes;
+        var strTime = hours + ':' + minutes + ' ' + ampm;
+        return strTime;
+    }
+    
+    function refreshData(span) {
+        Events.fetch('soql','Select Id, Subject, StartDateTime, ActivityDate, ActivityDateTime, DurationInMinutes, Description, Location from Event WHERE ActivityDate = '+span+' ORDER BY StartDateTime ASC',divideEvents);
+    }
+    
+    function divideEvents() {
+        Sun_Events.length = 0;
+        Mon_Events.length = 0;
+        Tue_Events.length = 0;
+        Wed_Events.length = 0;
+        Thu_Events.length = 0;
+        Fri_Events.length = 0;
+        Sat_Events.length = 0;
+        Today_Events.length = 0;
+        
+        Week_Dates = [null,null,null,null,null,null,null];
+        
+        Today = new Date();
+        
+        $.each(Events.data(), function() {
+               event_date = activityToDateTime(this);
+                   if(event_date.getDay() == Today.getDay()) {
+                        Today_Events.push(event_date);
+                   }
+                   
+                   Week_Events[event_date.getDay()].push(this);
+                   Week_Dates[event_date.getDay()] = this.ActivityDate.replace('2013-','');
+               }
+        
+               );
+        $('#week-planner').empty();
+        $('#days-events').empty();
+        
+        $('#week-planner').append(eventsTmpl({
+                                             Week_Dates : Week_Dates,
+                                             Week_Events : Week_Events
+                                  }));
+        $('#days-events').append(daysTmpl({
+                                             Week_Dates : Week_Dates,
+                                             Week_Events : Week_Events
+                                             }));
+        calendarObj.init();
+    }
+    
+</script>
+    
+</head>
+
+<body>
+
+<div class="app-wrapper">
+
+<nav class="main-menu">
+<a href="#">Something</a>
+<a href="#">Something</a>
+<a href="#">Something</a>
+</nav><!--#main-menu-->
+
+<header>
+<h1>Calendar</h1>
+</header>
+
+<div class="app-content">
+    <div id="tabbed-list-view-nav" class="tabbed-list-view-nav">
+        <a id="today-tab" class="span-50 on">Today</a>
+        <a id="week-tab" class="span-50">Week</a>
+        <div id="tabbed-list-view-nav-arrow" class="tabbed-list-view-nav-arrow">&nbsp;</div>
+    </div>
+<section>
+    <div class="content">
+        <div class="span-50 padding-right-gutter-half">
+            <h1 class="padding-bottom-gutter"></h1>
+            <ul id="week-planner" class="week-planner">
+                <script id='events-template' type='text/template'>
+                    <% for(var i = 0; i < 7; i++){
+                       %>
+                       <%
+                       if(Week_Dates[i] != null) {
+                           %>
+                           <li data-date="<%=Week_Dates[i]%>">
+                            <div class="date"><B><%=Days_of_Week[i]%></B><BR /><%=Week_Dates[i]%></div>
+                            <ul class="week-planner-items">
+                           <% for(var x = 0; x < Week_Events[i].length; x++) {%>
+                               <li class="event"></li>
+                             <%}%>
+                            </ul>
+                            </li>   
+                           <%
+                       }
+                      } %>
+                </script>
+           </ul>
+              
+            <!-- .week-planner -->
+        </div><!-- .span-50 -->
+        <div id="days-events" class="span-50 padding-left-gutter-half">
+            <script id='days-template' type='text/template'>
+                <% 
+                  for(var i = 0; i < 7; i++){
+                    %>
+                    <%
+                    if(Week_Dates[i] != null) {
+                        %>
+                        <div class="date-content" id="date-content-<%=Week_Dates[i]%>">
+                        <h1 class="event">Events</h1>
+                        <div class="events">
+                        <% for(var x = 0; x < Week_Events[i].length; x++) {%>
+                            <h3><%=Week_Events[i][x].Subject%></h3>
+                            <P><%=activityTimeSpan(Week_Events[i][x])%></P>
+                            <P><%=Week_Events[i][x].Location%></P>
+                            <P><%=Week_Events[i][x].Description%></P>
+                            <%}%>
+                        </div>
+                        </div>
+                        <%
+                    }
+                } %>
+                </script>
+                        
+        </div><!--.span-50-->
+    </div><!-- .content -->
+</section>
+
+</div><!--#app-content-->
+</div><!--#app-wrapper-->
+
+</body>
+</html>
